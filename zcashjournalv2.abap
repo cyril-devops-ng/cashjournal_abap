@@ -73,7 +73,10 @@ data:
       date_conv like sy-datum,
       currency type waers,
       pos_num type i,
-        tran_num  like tcj_trans_names-transact_number.
+        tran_num  like tcj_trans_names-transact_number,
+        simulation type c value 'Y',
+        question type string,
+        answer.
 *      parameters for FM FCJ_POST_ALL
 DATA:
       I_COMP_CODE LIKE  TCJ_C_JOURNALS-COMP_CODE,
@@ -92,8 +95,8 @@ DATA:
       P_NUMB_OF_REC TYPE  I,
       P_NUMB_OF_PAYM  TYPE  I,
       P_NUMB_OF_CHECKS  TYPE  I,
-      ITCJ_POSTINGS	LIKE table of	ISCJ_POSTINGS with header line,
-      ITCJ_WTAX_ITEMS	LIKE table of	TCJ_WTAX_ITEMS with header line,
+      ITCJ_POSTINGS LIKE table of ISCJ_POSTINGS with header line,
+      ITCJ_WTAX_ITEMS LIKE table of TCJ_WTAX_ITEMS with header line,
       ITCJ_SPLIT_POSTINGS LIKE  table of ISCJ_POSTINGS with header line,
       ITCJ_CPD  LIKE  table of TCJ_CPD with header line.
 SELECTION-SCREEN begin of block b3 with frame title text-002.
@@ -131,9 +134,54 @@ at SELECTION-SCREEN on VALUE-REQUEST FOR fname.
 
 start-of-selection.
   if ( TESTMOD <> 'X' ).
-    perform cashJournal.
+    SIMULATION = 'N'.
+
+      QUESTION = 'Are you sure you want to run in update mode?'.
+
+*    CALL FUNCTION 'POPUP_TO_CONFIRM'
+*      EXPORTING
+**       TITLEBAR                    = ' '
+**       DIAGNOSE_OBJECT             = ' '
+*        TEXT_QUESTION               = question
+**       TEXT_BUTTON_1               = 'Ja'(001)
+**       ICON_BUTTON_1               = ' '
+**       TEXT_BUTTON_2               = 'Nein'(002)
+**       ICON_BUTTON_2               = ' '
+**       DEFAULT_BUTTON              = '1'
+**       DISPLAY_CANCEL_BUTTON       = 'X'
+**       USERDEFINED_F1_HELP         = ' '
+**       START_COLUMN                = 25
+**       START_ROW                   = 6
+**       POPUP_TYPE                  =
+**       IV_QUICKINFO_BUTTON_1       = ' '
+**       IV_QUICKINFO_BUTTON_2       = ' '
+*     IMPORTING
+*       ANSWER                      = answer
+**     TABLES
+**       PARAMETER                   =
+**     EXCEPTIONS
+**       TEXT_NOT_FOUND              = 1
+**       OTHERS                      = 2
+*              .
+*    IF SY-SUBRC <> 0.
+** Implement suitable error handling here
+*    ENDIF.
+
+      perform cashJournal.
+
+    if ( sy-subrc = 0 ).
+      if ( answer eq '1' ).
+
+    else.
+
+    endif.
+    endif.
+
   else.
-    MESSAGE e004(zmsg1) DISPLAY LIKE 'A'.
+    SIMULATION = 'Y'.
+    MESSAGE i004(zmsg1).
+    perform cashJournal.
+    MESSAGE i008(zmsg1).
   endif.
 
 form cashJournal.
@@ -150,7 +198,7 @@ form cashJournal.
 
   perform uploadCashJournal.
   CALL METHOD gr_alv->display.
-  perform displayalv2 using ad_error[].
+*  perform displayalv2 using ad_error[].
 endform.
 
 form uploadCashJournal.
@@ -187,6 +235,7 @@ form uploadCashJournal.
     PERFORM flagerror.
     if ( errorflag = '0' ).
 *      perform postCashJournal. "Added 29/03/2015 by Catalyst
+      IF ( SIMULATION = 'N' ).
       CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
 *                       EXPORTING
 *                         WAIT          =
@@ -194,6 +243,12 @@ form uploadCashJournal.
 *                         RETURN        =
                 .
 
+      else.
+        CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'
+*                         IMPORTING
+*                           RETURN        =
+                .
+      ENDIF.
     else.
       CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'
 *                         IMPORTING
